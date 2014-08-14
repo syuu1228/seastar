@@ -14,12 +14,12 @@ CXXFLAGS = -std=gnu++1y -g -Wall -Werror $(opt) -MD -MT $@ -MP -flto $(sanitize)
 
 tests = test-reactor
 
-all: kassandra $(tests) httpd
+all: seastar $(tests) httpd
 
 clean:
-	rm kassandra $(tests) *.o
+	rm seastar $(tests) *.o
 
-kassandra: main.o reactor.o
+seastar: main.o reactor.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test-reactor: test-reactor.o reactor.o
