@@ -23,6 +23,7 @@
 #include <vector>
 #include <algorithm>
 #include "apply.hh"
+#include "lifo-alloc.hh"
 
 class socket_address;
 class reactor;
@@ -85,7 +86,7 @@ make_task(Func&& func) {
 
 
 template <typename... T>
-struct future_state {
+struct future_state : lifo_allocator<future_state<T...>> {
     promise<T...>* _promise = nullptr;
     future<T...>* _future = nullptr;
     std::unique_ptr<task> _task;
