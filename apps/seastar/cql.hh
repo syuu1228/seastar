@@ -8,7 +8,7 @@
 #ifndef CQL_HH_
 #define CQL_HH_
 
-#include "sstring.hh"
+#include "core/sstring.hh"
 #include <stdint.h>
 #include <vector>
 #include <boost/optional.hpp>

@@ -6,7 +6,7 @@
  */
 
 #include "cql.hh"
-#include "reactor.hh"
+#include "core/reactor.hh"
 
 int main(int ac, char** av)
 {
