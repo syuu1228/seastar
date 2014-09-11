@@ -27,7 +27,7 @@ CXXFLAGS += -I $(src)
 # Ubuntu fails without this, see https://bugs.launchpad.net/ubuntu/+source/gcc-defaults/+bug/1228201
 LDFLAGS += -Wl,--no-as-needed
 
-tests = tests/test-reactor tests/fileiotest tests/virtiotest tests/l3_test tests/ip_test tests/timertest
+tests = tests/test-reactor tests/fileiotest tests/virtiotest tests/netmaptest tests/l3_test tests/ip_test tests/timertest
 tests += tests/tcp_test
 
 link = mkdir -p $(@D) && $(CXX) $(CXXFLAGS) $(LDFLAGS) -o $@ $^
@@ -56,6 +56,8 @@ apps/httpd/httpd: apps/httpd/httpd.o core/reactor.o $(libnet)
 tests/fileiotest: tests/fileiotest.o core/reactor.o
 
 tests/virtiotest: tests/virtiotest.o net/virtio.o core/reactor.o net/net.o net/ip.o net/ethernet.o net/arp.o
+
+tests/netmaptest: tests/netmaptest.o net/netmap.o core/reactor.o net/net.o net/ip.o net/ethernet.o net/arp.o
 
 tests/l3_test: tests/l3_test.o net/virtio.o core/reactor.o net/net.o net/ip.o net/ethernet.o net/arp.o
 
