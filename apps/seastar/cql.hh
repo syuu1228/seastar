@@ -86,7 +86,7 @@ struct option_element {
 };
 
 template <typename discrim_type, typename... elements>
-struct option;
+class option;
 
 namespace detail {
 
