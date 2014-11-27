@@ -106,6 +106,7 @@ private:
 public:
     explicit native_network_stack(boost::program_options::variables_map opts, std::unique_ptr<device> dev);
     virtual server_socket listen(socket_address sa, listen_options opt) override;
+    virtual client_socket connect(socket_address sa) override;
     virtual udp_channel make_udp_channel(ipv4_addr addr) override;
     virtual future<> initialize() override;
     static future<std::unique_ptr<network_stack>> create(boost::program_options::variables_map opts) {
@@ -156,6 +157,12 @@ server_socket
 native_network_stack::listen(socket_address sa, listen_options opts) {
     assert(sa.as_posix_sockaddr().sa_family == AF_INET);
     return tcpv4_listen(_inet.get_tcp(), ntohs(sa.as_posix_sockaddr_in().sin_port), opts);
+}
+
+client_socket
+native_network_stack::connect(socket_address sa) {
+    assert(sa.as_posix_sockaddr().sa_family == AF_INET);
+    return client_socket(nullptr);
 }
 
 using namespace std::chrono_literals;
