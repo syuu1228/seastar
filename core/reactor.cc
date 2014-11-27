@@ -138,6 +138,15 @@ reactor::posix_listen(socket_address sa, listen_options opts) {
     return pollable_fd(std::move(fd));
 }
 
+pollable_fd
+reactor::posix_connect(socket_address sa) {
+    file_desc fd = file_desc::socket(sa.u.sa.sa_family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    fd.connect(sa.u.sa, sizeof(sa.u.sas));
+    int mode = 1;
+    fd.ioctl(FIONBIO, &mode);
+    return pollable_fd(std::move(fd));
+}
+
 server_socket
 reactor::listen(socket_address sa, listen_options opt) {
     return _network_stack->listen(sa, opt);
