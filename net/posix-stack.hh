@@ -60,6 +60,13 @@ public:
     virtual future<connected_socket, socket_address> accept();
 };
 
+class posix_client_socket_impl : public client_socket_impl {
+    pollable_fd _fd;
+public:
+    explicit posix_client_socket_impl(pollable_fd fd) : _fd(std::move(fd)) {}
+    virtual future<connected_socket> get_socket();
+};
+
 class posix_network_stack : public network_stack {
 public:
     posix_network_stack(boost::program_options::variables_map opts) {}
