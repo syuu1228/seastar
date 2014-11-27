@@ -167,6 +167,12 @@ public:
     virtual future<connected_socket, socket_address> accept() = 0;
 };
 
+class client_socket_impl {
+public:
+    virtual ~client_socket_impl() {}
+    virtual future<connected_socket> get_socket() = 0;
+};
+
 
 namespace std {
 
@@ -191,10 +197,21 @@ public:
     }
 };
 
+class client_socket {
+    std::unique_ptr<client_socket_impl> _csi;
+public:
+    explicit client_socket(std::unique_ptr<client_socket_impl> csi)
+        : _csi(std::move(csi)) {}
+    future<connected_socket> get_socket() {
+        return _csi->get_socket();
+    }
+};
+
 class network_stack {
 public:
     virtual ~network_stack() {}
     virtual server_socket listen(socket_address sa, listen_options opts) = 0;
+    virtual client_socket connect(socket_address sa) = 0;
     virtual net::udp_channel make_udp_channel(ipv4_addr addr = {}) = 0;
     virtual future<> initialize() {
         return make_ready_future();
@@ -584,6 +601,8 @@ public:
     void configure(boost::program_options::variables_map config);
 
     server_socket listen(socket_address sa, listen_options opts = {});
+
+    client_socket connect(socket_address sa);
 
     pollable_fd posix_listen(socket_address sa, listen_options opts = {});
 

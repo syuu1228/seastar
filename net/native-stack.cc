@@ -25,6 +25,37 @@
 
 namespace net {
 
+// native_network_stack
+class native_network_stack : public network_stack {
+    static std::unique_ptr<native_network_stack> _s;
+    interface _netif;
+    ipv4 _inet;
+    udp_v4 _udp;
+    bool _dhcp = false;
+    promise<> _config;
+    timer _timer;
+
+    void on_dhcp(bool, const dhcp::lease &, bool);
+
+    using tcp4 = tcp<ipv4_traits>;
+public:
+    explicit native_network_stack(boost::program_options::variables_map opts);
+    virtual server_socket listen(socket_address sa, listen_options opt) override;
+    virtual client_socket connect(socket_address sa) override;
+    virtual udp_channel make_udp_channel(ipv4_addr addr) override;
+    virtual future<> initialize() override;
+    static std::unique_ptr<network_stack> create(boost::program_options::variables_map opts) {
+        return std::make_unique<native_network_stack>(opts);
+    }
+    virtual bool has_per_core_namespace() override { return true; };
+    friend class native_server_socket_impl<tcp4>;
+};
+
+udp_channel
+native_network_stack::make_udp_channel(ipv4_addr addr) {
+    return _udp.make_channel(addr);
+}
+
 enum class xen_info {
     nonxen = 0,
     userspace = 1,
@@ -156,6 +187,12 @@ server_socket
 native_network_stack::listen(socket_address sa, listen_options opts) {
     assert(sa.as_posix_sockaddr().sa_family == AF_INET);
     return tcpv4_listen(_inet.get_tcp(), ntohs(sa.as_posix_sockaddr_in().sin_port), opts);
+}
+
+client_socket
+native_network_stack::connect(socket_address sa) {
+    assert(sa.as_posix_sockaddr().sa_family == AF_INET);
+    return client_socket(nullptr);
 }
 
 using namespace std::chrono_literals;
