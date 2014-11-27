@@ -158,17 +158,21 @@ reactor::posix_listen(socket_address sa, listen_options opts) {
     return pollable_fd(std::move(fd));
 }
 
-future<pollable_fd>
+pollable_fd
 reactor::posix_connect(socket_address sa) {
     file_desc fd = file_desc::socket(sa.u.sa.sa_family, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
     fd.connect(sa.u.sa, sizeof(sa.u.sas));
-    pollable_fd pfd(std::move(fd), pollable_fd::speculation(EPOLLOUT));
-    return make_ready_future<pollable_fd>(std::move(pfd));
+    return pollable_fd(std::move(fd), pollable_fd::speculation(EPOLLOUT));
 }
 
 server_socket
 reactor::listen(socket_address sa, listen_options opt) {
     return _network_stack->listen(sa, opt);
+}
+
+connected_socket
+reactor::connect(socket_address sa) {
+    return _network_stack->connect(sa);
 }
 
 void reactor_backend_epoll::complete_epoll_event(pollable_fd_state& pfd, promise<> pollable_fd_state::*pr,
