@@ -183,6 +183,10 @@ public:
         auto r = ::bind(_fd, &sa, sl);
         throw_system_error_on(r == -1);
     }
+    void connect(sockaddr& sa, socklen_t sl) {
+        auto r = ::connect(_fd, &sa, sl);
+        throw_system_error_on(r == -1);
+    }
     socket_address get_address() {
         socket_address addr;
         auto len = (socklen_t) sizeof(addr.u.sas);
