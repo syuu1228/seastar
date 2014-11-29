@@ -19,6 +19,7 @@
 #include <deque>
 #include <chrono>
 #include <experimental/optional>
+#include <random>
 
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
@@ -297,6 +298,8 @@ private:
     inet_type& _inet;
     std::unordered_map<connid, shared_ptr<tcb>, connid_hash> _tcbs;
     std::unordered_map<uint16_t, listener*> _listening;
+    std::default_random_engine _re;
+    std::uniform_int_distribution<uint16_t> _port_dist{};
 public:
     class connection {
         shared_ptr<tcb> _tcb;
@@ -359,6 +362,7 @@ public:
     void received(packet p, ipaddr from, ipaddr to);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off);
     listener listen(uint16_t port, size_t queue_length = 100);
+    connection connect(socket_address sa);
     net::hw_features hw_features() { return _inet._inet.hw_features(); }
 private:
     void send(ipaddr from, ipaddr to, packet p);
@@ -369,6 +373,30 @@ private:
 template <typename InetTraits>
 auto tcp<InetTraits>::listen(uint16_t port, size_t queue_length) -> listener {
     return listener(*this, port, queue_length);
+}
+
+template <typename InetTraits>
+auto tcp<InetTraits>::connect(socket_address sa) -> connection {
+    uint16_t src_port;
+    connid id;
+    auto tcbi = _tcbs.end();
+    auto src_ip = _inet._inet.host_address();
+    auto dst_ip = ipv4_address(sa);
+    auto dst_port = net::ntoh(sa.u.in.sin_port);
+
+    do {
+        src_port = (_port_dist(_re) % (65535 - 49152)) + 49152;
+        id = connid{src_ip, dst_ip, src_port, dst_port};
+        tcbi = _tcbs.find(id);
+    } while (tcbi != _tcbs.end());
+    // Pin this flow to current CPU
+    _inet._inet.netif()->pin_flow(id.hash(), engine.cpu_id());
+
+    auto tcbp = make_shared<tcb>(*this, id);
+    _tcbs.insert({id, tcbp});
+    tcbp->output();
+
+    return connection(tcbp);
 }
 
 template <typename InetTraits>
@@ -512,11 +540,18 @@ void tcp<InetTraits>::tcb::input(tcp_hdr* th, packet p) {
     if (th->f_syn) {
         if (!_foreign_syn_received) {
             _foreign_syn_received = true;
+            if (th->f_ack)
+                _local_syn_acked = true;
             _rcv.initial = seg_seq;
             _rcv.next = _rcv.initial + 1;
             _rcv.urgent = _rcv.next;
             _snd.wl1 = th->seq;
-            _snd.next = _snd.initial = get_isn();
+            if (!th->f_ack) {
+                _snd.next = _snd.initial = get_isn();
+            } else {
+                _snd.initial = make_seq(0);
+                _snd.next = _snd.initial + 1;
+            }
             _option.parse(opt_start, opt_end);
             // Remote receive window scale factor
             _snd.window_scale = _option._remote_win_scale;
