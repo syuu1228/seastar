@@ -13,6 +13,9 @@ template <typename Protocol>
 class native_server_socket_impl;
 
 template <typename Protocol>
+class native_client_socket_impl;
+
+template <typename Protocol>
 class native_connected_socket_impl;
 
 class native_network_stack;
@@ -27,8 +30,21 @@ public:
 };
 
 template <typename Protocol>
+class native_client_socket_impl : public client_socket_impl {
+    typename Protocol::connector _connector;
+public:
+    native_client_socket_impl(Protocol& proto, socket_address sa);
+    virtual future<connected_socket> get_socket() override;
+};
+
+template <typename Protocol>
 native_server_socket_impl<Protocol>::native_server_socket_impl(Protocol& proto, uint16_t port, listen_options opt)
     : _listener(proto.listen(port)) {
+}
+
+template <typename Protocol>
+native_client_socket_impl<Protocol>::native_client_socket_impl(Protocol& proto, socket_address sa)
+    : _connector(proto.connect(sa)) {
 }
 
 template <typename Protocol>
@@ -38,6 +54,15 @@ native_server_socket_impl<Protocol>::accept() {
         return make_ready_future<connected_socket, socket_address>(
                 connected_socket(std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn))),
                 socket_address()); // FIXME: don't fake it
+    });
+}
+
+template <typename Protocol>
+future<connected_socket>
+native_client_socket_impl<Protocol>::get_socket() {
+    return _connector.get_socket().then([this] (typename Protocol::connection conn) {
+        return make_ready_future<connected_socket>(
+                connected_socket(std::make_unique<native_connected_socket_impl<Protocol>>(std::move(conn)))); // FIXME: don't fake it
     });
 }
 
