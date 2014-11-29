@@ -19,6 +19,7 @@
 #include <deque>
 #include <chrono>
 #include <experimental/optional>
+#include <random>
 
 #define CRYPTOPP_ENABLE_NAMESPACE_WEAK 1
 #include <cryptopp/md5.h>
@@ -145,6 +146,7 @@ public:
     using connid_hash = typename connid::connid_hash;
     class connection;
     class listener;
+    class connector;
 private:
     class tcb;
 
@@ -291,6 +293,7 @@ private:
     inet_type& _inet;
     std::unordered_map<connid, shared_ptr<tcb>, connid_hash> _tcbs;
     std::unordered_map<uint16_t, listener*> _listening;
+    std::unordered_map<uint16_t, connector*> _connecting;
 public:
     class connection {
         shared_ptr<tcb> _tcb;
@@ -348,11 +351,37 @@ public:
         }
         friend class tcp;
     };
+    class connector {
+        tcp& _tcp;
+        uint16_t _src_port;
+        queue<connection> _q;
+    private:
+        connector(tcp& t, uint16_t src_port)
+            : _tcp(t), _src_port(src_port), _q(1) {
+        }
+    public:
+        connector(connector&& x)
+            : _tcp(x._tcp), _src_port(x._src_port), _q(std::move(x._q)) {
+            _tcp._connecting[_src_port] = this;
+            _src_port = 0;
+        }
+        void register_connecting() {
+            _tcp._connecting.emplace(_src_port, this);
+        }
+        future<connection> get_socket() {
+            return _q.not_empty().then([this] {
+                _tcp._connecting.erase(_src_port);
+                return make_ready_future<connection>(_q.pop());
+            });
+        }
+        friend class tcp;
+    };
 public:
     explicit tcp(inet_type& inet) : _inet(inet) {}
     void received(packet p, ipaddr from, ipaddr to);
     unsigned forward(packet& p, size_t off, ipaddr from, ipaddr to);
     listener listen(uint16_t port, size_t queue_length = 100);
+    connector connect(socket_address sa);
     net::hw_features hw_features() { return _inet._inet.hw_features(); }
 private:
     void send(ipaddr from, ipaddr to, packet p);
@@ -363,6 +392,59 @@ private:
 template <typename InetTraits>
 auto tcp<InetTraits>::listen(uint16_t port, size_t queue_length) -> listener {
     return listener(*this, port, queue_length);
+}
+
+template <typename InetTraits>
+auto tcp<InetTraits>::connect(socket_address sa) -> connector {
+    std::random_device rd;
+    std::default_random_engine e1(rd());
+    std::uniform_int_distribution<uint16_t> port_dist{};
+    uint16_t src_port;
+
+    do {
+        src_port = (port_dist(e1) % (65535 - 49152)) + 49152;
+    } while (_listening.count(src_port) > 0);
+    packet p;
+    auto th = p.prepend_header<tcp_hdr>();
+    th->src_port = src_port;
+    th->dst_port = net::ntoh(sa.u.in.sin_port);
+
+    th->f_syn = true;
+    th->f_ack = false;
+    th->f_urg = false;
+    th->f_psh = false;
+    th->f_fin = false;
+
+    th->seq = make_seq(0);
+    th->ack = make_seq(0);
+
+    th->data_offset = sizeof(*th) / 4;
+    th->window = 65535;
+    th->checksum = 0;
+
+    *th = hton(*th);
+
+    checksummer csum;
+    auto local_ip = _inet._inet.host_address();
+    auto foreign_ip = ipv4_address(sa);
+    InetTraits::tcp_pseudo_header_checksum(csum, local_ip, foreign_ip, sizeof(*th));
+    if (hw_features().tx_csum_offload) {
+        th->checksum = ~csum.get();
+    } else {
+        csum.sum(p);
+        th->checksum = csum.get();
+    }
+
+    offload_info oi;
+    oi.protocol = ip_protocol_num::tcp;
+    oi.tcp_hdr_len = sizeof(tcp_hdr);
+    p.set_offload_info(oi);
+
+    auto cn = connector(*this, src_port);
+    cn.register_connecting();
+    send(local_ip, foreign_ip, std::move(p));
+
+    return std::move(cn);
 }
 
 template <typename InetTraits>
@@ -407,6 +489,14 @@ void tcp<InetTraits>::received(packet p, ipaddr from, ipaddr to) {
             }
             tcbp = make_shared<tcb>(*this, id);
             listener->second->_q.push(connection(tcbp));
+            _tcbs.insert({id, tcbp});
+        } else if (h.f_syn && h.f_ack) {
+            auto connector = _connecting.find(id.local_port);
+            if (connector == _connecting.end()) {
+                return respond_with_reset(&h, id.local_ip, id.foreign_ip);
+            }
+            tcbp = make_shared<tcb>(*this, id);
+            connector->second->_q.push(connection(tcbp));
             _tcbs.insert({id, tcbp});
         }
     } else {
@@ -507,11 +597,18 @@ void tcp<InetTraits>::tcb::input(tcp_hdr* th, packet p) {
     if (th->f_syn) {
         if (!_foreign_syn_received) {
             _foreign_syn_received = true;
+            if (th->f_ack)
+                _local_syn_acked = true;
             _rcv.initial = seg_seq;
             _rcv.next = _rcv.initial + 1;
             _rcv.urgent = _rcv.next;
             _snd.wl1 = th->seq;
-            _snd.next = _snd.initial = get_isn();
+            if (!th->f_ack) {
+                _snd.next = _snd.initial = get_isn();
+            } else {
+                _snd.initial = make_seq(0);
+                _snd.next = _snd.initial + 1;
+            }
             _option.parse(opt_start, opt_end);
             // Remote receive window scale factor
             _snd.window_scale = _option._remote_win_scale;

@@ -19,6 +19,9 @@ class tcp;
 server_socket
 tcpv4_listen(tcp<ipv4_traits>& tcpv4, uint16_t port, listen_options opts);
 
+client_socket
+tcpv4_connect(tcp<ipv4_traits>& tcpv4, socket_address sa);
+
 }
 
 #endif
