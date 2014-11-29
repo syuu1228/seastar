@@ -174,7 +174,7 @@ native_network_stack::listen(socket_address sa, listen_options opts) {
 connected_socket
 native_network_stack::connect(socket_address sa) {
     assert(sa.as_posix_sockaddr().sa_family == AF_INET);
-    return connected_socket(nullptr);
+    return tcpv4_connect(_inet.get_tcp(), sa);
 }
 
 using namespace std::chrono_literals;
