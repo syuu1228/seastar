@@ -66,15 +66,22 @@ future<> interface::dispatch_packet(packet p) {
         auto i = _proto_map.find(ntoh(eh->eth_proto));
         if (i != _proto_map.end()) {
             l3_rx_stream& l3 = i->second;
-            auto fw = _dev->forward_dst(engine.cpu_id(), [&p, &l3] () {
+            auto fw = _dev->forward_dst(engine.cpu_id(), [&p, &l3, this] () {
+                forward_hash data;
+                uint32_t hash = 0u;
+                if (l3.forward(data, p, sizeof(eth_hdr))) {
+                    hash = toeplitz_hash(rsskey, data);
+                    auto flow = _flow_map.find(hash);
+                    if (flow != _flow_map.end()) {
+                        return flow->second;
+                    }
+                }
                 auto hwrss = p.rss_hash();
                 if (hwrss) {
                     return hwrss.value();
+                } else if (hash) {
+                    return hash;
                 } else {
-                    forward_hash data;
-                    if (l3.forward(data, p, sizeof(eth_hdr))) {
-                        return toeplitz_hash(rsskey, data);
-                    }
                     return 0u;
                 }
             });

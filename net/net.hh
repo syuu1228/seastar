@@ -84,6 +84,7 @@ class interface {
         l3_rx_stream(std::function<bool (forward_hash&, packet&, size_t)>&& fw) : ready(packet_stream.started()), forward(fw) {}
     };
     std::unordered_map<uint16_t, l3_rx_stream> _proto_map;
+    std::unordered_map<uint32_t, unsigned> _flow_map;
     std::shared_ptr<device> _dev;
     subscription<packet> _rx;
     ethernet_address _hw_address;
@@ -100,6 +101,8 @@ public:
             std::function<bool (forward_hash&, packet&, size_t)> forward);
     void forward(unsigned cpuid, packet p);
     unsigned hash2cpu(uint32_t hash);
+    void pin_flow(uint32_t hash, unsigned cpuid) { _flow_map[hash] = cpuid; }
+    void unpin_flow(uint32_t hash) { _flow_map.erase(hash); }
     friend class l3_protocol;
 };
 
