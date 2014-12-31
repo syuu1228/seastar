@@ -63,7 +63,7 @@ public:
     };
 
     void start(ipv4_addr server_addr, std::string mode) {
-        auto fd = engine.net().connect(make_ipv4_address(server_addr));
+        engine.net().connect(make_ipv4_address(server_addr)).then([this, mode] (connected_socket fd) {
             _sockets.push_back(std::move(fd));
             auto conn = new connection(std::move(_sockets[0]));
             if (mode == "write") {
@@ -85,6 +85,7 @@ public:
                     }
                 });
             }
+        });
     }
 };
 
