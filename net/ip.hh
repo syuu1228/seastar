@@ -40,6 +40,7 @@
 #include "core/shared_ptr.hh"
 #include "toeplitz.hh"
 #include "net/udp.hh"
+#include "net/nat-adapter.hh"
 
 namespace net {
 
@@ -226,10 +227,12 @@ public:
         });
     }
     void received(packet p, eth_hdr eh, ip_hdr iph);
+    void register_nat_adapter(lw_shared_ptr<nat_adapter> h);
 private:
     inet_type& _inet;
     circular_buffer<ipv4_traits::l4packet> _packetq;
     semaphore _queue_space = {212992};
+    lw_shared_ptr<nat_adapter> _nat_adapter;
 };
 
 class ipv4_icmp final : public ip_protocol {
@@ -240,6 +243,7 @@ public:
     virtual void received(packet p, eth_hdr eh, ip_hdr iph) {
         _icmp.received(std::move(p), std::move(eh), std::move(iph));
     }
+    void register_nat_adapter(lw_shared_ptr<nat_adapter> h);
     friend class ipv4;
 };
 
@@ -256,6 +260,7 @@ private:
     int _queue_size = default_queue_size;
     uint16_t _next_anonymous_port = min_anonymous_port;
     circular_buffer<std::tuple<ipv4_traits::l4packet, lw_shared_ptr<udp_channel_state>, size_t>> _packetq;
+    lw_shared_ptr<nat_adapter> _nat_adapter;
 private:
     uint16_t next_port(uint16_t port);
 public:
@@ -281,6 +286,7 @@ public:
     void send(uint16_t src_port, ipv4_addr dst, packet &&p, lw_shared_ptr<udp_channel_state> channel);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off) override;
     void set_queue_size(int size) { _queue_size = size; }
+    void register_nat_adapter(lw_shared_ptr<nat_adapter> h);
 };
 
 struct ip_packet_filter {
@@ -403,6 +409,7 @@ public:
         _pkt_providers.push_back(std::move(func));
     }
     future<ethernet_address> get_l2_dst_address(ipv4_address to);
+    void register_nat_adapter(lw_shared_ptr<nat_adapter> h);
 };
 
 template <ip_protocol_num ProtoNum>

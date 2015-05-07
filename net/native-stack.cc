@@ -21,6 +21,7 @@
 
 #include "native-stack.hh"
 #include "native-stack-impl.hh"
+#include "nat-adapter.hh"
 #include "net.hh"
 #include "ip.hh"
 #include "tcp-stack.hh"
@@ -142,6 +143,7 @@ private:
     bool _dhcp = false;
     promise<> _config;
     timer<> _timer;
+    lw_shared_ptr<nat_adapter> _nat_adapter;
 
     future<> run_dhcp(bool is_renew = false, const dhcp::lease & res = dhcp::lease());
     void on_dhcp(bool, const dhcp::lease &, bool);
@@ -192,7 +194,7 @@ add_native_net_options_description(boost::program_options::options_description &
 }
 
 native_network_stack::native_network_stack(boost::program_options::variables_map opts, std::shared_ptr<device> dev)
-    : _netif(std::move(dev))
+    : _netif(dev)
     , _inet(&_netif) {
     _inet.get_udp().set_queue_size(opts["udpv4-queue-size"].as<int>());
     _dhcp = opts["host-ipv4-addr"].defaulted()
@@ -202,6 +204,15 @@ native_network_stack::native_network_stack(boost::program_options::variables_map
         _inet.set_host_address(ipv4_address(_dhcp ? 0 : opts["host-ipv4-addr"].as<std::string>()));
         _inet.set_gw_address(ipv4_address(opts["gw-ipv4-addr"].as<std::string>()));
         _inet.set_netmask_address(ipv4_address(opts["netmask-ipv4-addr"].as<std::string>()));
+    }
+    if (opts.count("nat-adapter")) {
+        assert(opts.count("dpdk-pmd"));
+        auto nat_adapter_ready = nat_adapter::create(opts, dev);
+        nat_adapter_ready.then([this] (lw_shared_ptr<nat_adapter> h) {
+            _nat_adapter = std::move(h);
+            _nat_adapter->set_hw_address(_netif.hw_address());
+            _inet.register_nat_adapter(_nat_adapter);
+        });
     }
 }
 
@@ -338,6 +349,7 @@ boost::program_options::options_description nns_options() {
         ("lro",
                 boost::program_options::value<std::string>()->default_value("on"),
                 "Enable LRO")
+        ("nat-adapter", "Use NAT adapter")
         ;
 
     add_native_net_options_description(opts);
