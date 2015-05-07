@@ -21,6 +21,7 @@
  */
 
 #include "ip.hh"
+#include "tcp.hh"
 #include "core/print.hh"
 #include "core/future-util.hh"
 #include "core/shared_ptr.hh"
@@ -220,6 +221,14 @@ future<ethernet_address> ipv4::get_l2_dst_address(ipv4_address to) {
     }
 
     return _arp.lookup(dst);
+}
+
+void ipv4::register_nat_adapter(lw_shared_ptr<nat_adapter> h)
+{
+    get_tcp().register_nat_adapter(h);
+    _udp.register_nat_adapter(h);
+    _icmp.register_nat_adapter(h);
+    _global_arp.register_nat_adapter(h);
 }
 
 void ipv4::send(ipv4_address to, ip_protocol_num proto_num, packet p, ethernet_address e_dst) {
@@ -442,9 +451,18 @@ packet ipv4::frag::get_assembled_packet(ethernet_address from, ethernet_address 
     return pkt;
 }
 
+void ipv4_icmp::register_nat_adapter(lw_shared_ptr<nat_adapter> h) {
+    _icmp.register_nat_adapter(h);
+}
+
+void icmp::register_nat_adapter(lw_shared_ptr<nat_adapter> h) {
+    _nat_adapter = h;
+}
+
 void icmp::received(packet p, eth_hdr eh, ip_hdr iph) {
     auto hdr = p.get_header<icmp_hdr>(0);
     if (!hdr || hdr->type != icmp_hdr::msg_type::echo_request) {
+        _nat_adapter->send(std::move(p), std::move(eh), std::move(iph));
         return;
     }
     hdr->type = icmp_hdr::msg_type::echo_reply;
