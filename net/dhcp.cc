@@ -314,21 +314,21 @@ public:
         return make_ready_future<>();
     }
 
-    future<> handle(packet& p, ip_hdr* iph, ethernet_address from, bool & handled) override {
+    future<> handle(packet& p, eth_hdr& eh, ip_hdr& iph, bool & handled) override {
         if (_state == state::NONE || p.len() < sizeof(dhcp_packet_base)) {
             return make_ready_future<>();
         }
 
-        auto ipl = iph->ihl * 4;
+        auto ipl = iph.ihl * 4;
         auto udp = p.get_header<udp_hdr>(ipl);
         auto dhp = p.get_header<dhcp_payload>(ipl + sizeof(*udp));
 
         const auto opt_off = ipl + sizeof(*udp) + sizeof(dhcp_payload);
 
         if (udp == nullptr || dhp == nullptr
-                || iph->ip_proto != uint8_t(ip_protocol_num::udp)
+                || iph.ip_proto != uint8_t(ip_protocol_num::udp)
                 || (::ntohs)(udp->dst_port) != client_port
-                || iph->len < (opt_off + sizeof(option_mark))
+                || iph.len < (opt_off + sizeof(option_mark))
                 || dhp->magic != options_magic) {
             return make_ready_future<>();
         }

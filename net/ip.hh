@@ -285,7 +285,7 @@ public:
 
 struct ip_packet_filter {
     virtual ~ip_packet_filter() {};
-    virtual future<> handle(packet& p, ip_hdr* iph, ethernet_address from, bool & handled) = 0;
+    virtual future<> handle(packet& p, eth_hdr& eh, ip_hdr& iph, bool & handled) = 0;
 };
 
 struct ipv4_frag_id {
