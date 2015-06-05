@@ -587,7 +587,7 @@ public:
     };
 public:
     explicit tcp(inet_type& inet);
-    void received(packet p, ipaddr from, ipaddr to);
+    void received(packet p, eth_hdr eh, ip_hdr iph);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off);
     listener listen(uint16_t port, size_t queue_length = 100);
     future<connection> connect(socket_address sa);
@@ -672,7 +672,7 @@ bool tcp<InetTraits>::forward(forward_hash& out_hash_data, packet& p, size_t off
 }
 
 template <typename InetTraits>
-void tcp<InetTraits>::received(packet p, ipaddr from, ipaddr to) {
+void tcp<InetTraits>::received(packet p, eth_hdr eh, ip_hdr iph) {
     auto th = p.get_header<tcp_hdr>(0);
     if (!th) {
         return;
@@ -684,14 +684,14 @@ void tcp<InetTraits>::received(packet p, ipaddr from, ipaddr to) {
 
     if (!hw_features().rx_csum_offload) {
         checksummer csum;
-        InetTraits::tcp_pseudo_header_checksum(csum, from, to, p.len());
+        InetTraits::tcp_pseudo_header_checksum(csum, iph.src_ip, iph.dst_ip, p.len());
         csum.sum(p);
         if (csum.get() != 0) {
             return;
         }
     }
     auto h = ntoh(*th);
-    auto id = connid{to, from, h.dst_port, h.src_port};
+    auto id = connid{iph.dst_ip, iph.src_ip, h.dst_port, h.src_port};
     auto tcbi = _tcbs.find(id);
     lw_shared_ptr<tcb> tcbp;
     if (tcbi == _tcbs.end()) {

@@ -95,6 +95,30 @@ struct hash<net::ipv4_address> {
 
 namespace net {
 
+struct ip_hdr {
+    uint8_t ihl : 4;
+    uint8_t ver : 4;
+    uint8_t dscp : 6;
+    uint8_t ecn : 2;
+    packed<uint16_t> len;
+    packed<uint16_t> id;
+    packed<uint16_t> frag;
+    enum class frag_bits : uint8_t { mf = 13, df = 14, reserved = 15, offset_shift = 3 };
+    uint8_t ttl;
+    uint8_t ip_proto;
+    packed<uint16_t> csum;
+    ipv4_address src_ip;
+    ipv4_address dst_ip;
+    uint8_t options[0];
+    template <typename Adjuster>
+    auto adjust_endianness(Adjuster a) {
+        return a(len, id, frag, csum, src_ip, dst_ip);
+    }
+    bool mf() { return frag & (1 << uint8_t(frag_bits::mf)); }
+    bool df() { return frag & (1 << uint8_t(frag_bits::df)); }
+    uint16_t offset() { return frag << uint8_t(frag_bits::offset_shift); }
+} __attribute__((packed));
+
 struct ipv4_traits {
     using address_type = ipv4_address;
     using inet_type = ipv4_l4<ip_protocol_num::tcp>;
@@ -127,7 +151,7 @@ public:
 class ip_protocol {
 public:
     virtual ~ip_protocol() {}
-    virtual void received(packet p, ipv4_address from, ipv4_address to) = 0;
+    virtual void received(packet p, eth_hdr eh, ip_hdr iph) = 0;
     virtual bool forward(forward_hash& out_hash_data, packet& p, size_t off) { return true; }
 };
 
@@ -165,7 +189,7 @@ class ipv4_tcp final : public ip_protocol {
 public:
     ipv4_tcp(ipv4& inet);
     ~ipv4_tcp();
-    virtual void received(packet p, ipv4_address from, ipv4_address to);
+    virtual void received(packet p, eth_hdr eh, ip_hdr iph);
     virtual bool forward(forward_hash& out_hash_data, packet& p, size_t off) override;
     friend class ipv4;
 };
@@ -201,7 +225,7 @@ public:
             return l4p;
         });
     }
-    void received(packet p, ipaddr from, ipaddr to);
+    void received(packet p, eth_hdr eh, ip_hdr iph);
 private:
     inet_type& _inet;
     circular_buffer<ipv4_traits::l4packet> _packetq;
@@ -213,8 +237,8 @@ class ipv4_icmp final : public ip_protocol {
     icmp _icmp;
 public:
     ipv4_icmp(ipv4& inet) : _inet_l4(inet), _icmp(_inet_l4) {}
-    virtual void received(packet p, ipv4_address from, ipv4_address to) {
-        _icmp.received(std::move(p), from, to);
+    virtual void received(packet p, eth_hdr eh, ip_hdr iph) {
+        _icmp.received(std::move(p), std::move(eh), std::move(iph));
     }
     friend class ipv4;
 };
@@ -253,13 +277,11 @@ public:
 
     ipv4_udp(ipv4& inet);
     udp_channel make_channel(ipv4_addr addr);
-    virtual void received(packet p, ipv4_address from, ipv4_address to) override;
+    virtual void received(packet p, eth_hdr eh, ip_hdr iph) override;
     void send(uint16_t src_port, ipv4_addr dst, packet &&p, lw_shared_ptr<udp_channel_state> channel);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off) override;
     void set_queue_size(int size) { _queue_size = size; }
 };
-
-struct ip_hdr;
 
 struct ip_packet_filter {
     virtual ~ip_packet_filter() {};
@@ -309,7 +331,7 @@ private:
     ipv4_address _gw_address;
     ipv4_address _netmask;
     l3_protocol _l3;
-    subscription<packet, ethernet_address> _rx_packets;
+    subscription<packet, eth_hdr> _rx_packets;
     ipv4_tcp _tcp;
     ipv4_icmp _icmp;
     ipv4_udp _udp;
@@ -400,30 +422,6 @@ inline
 future<ethernet_address> ipv4_l4<ProtoNum>::get_l2_dst_address(ipv4_address to) {
     return _inet.get_l2_dst_address(to);
 }
-
-struct ip_hdr {
-    uint8_t ihl : 4;
-    uint8_t ver : 4;
-    uint8_t dscp : 6;
-    uint8_t ecn : 2;
-    packed<uint16_t> len;
-    packed<uint16_t> id;
-    packed<uint16_t> frag;
-    enum class frag_bits : uint8_t { mf = 13, df = 14, reserved = 15, offset_shift = 3 };
-    uint8_t ttl;
-    uint8_t ip_proto;
-    packed<uint16_t> csum;
-    ipv4_address src_ip;
-    ipv4_address dst_ip;
-    uint8_t options[0];
-    template <typename Adjuster>
-    auto adjust_endianness(Adjuster a) {
-        return a(len, id, frag, csum, src_ip, dst_ip);
-    }
-    bool mf() { return frag & (1 << uint8_t(frag_bits::mf)); }
-    bool df() { return frag & (1 << uint8_t(frag_bits::df)); }
-    uint16_t offset() { return frag << uint8_t(frag_bits::offset_shift); }
-} __attribute__((packed));
 
 template <typename InetTraits>
 struct l4connid<InetTraits>::connid_hash : private std::hash<ipaddr>, private std::hash<uint16_t> {
