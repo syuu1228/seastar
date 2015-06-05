@@ -33,8 +33,8 @@ arp_for_protocol::~arp_for_protocol() {
 }
 
 arp::arp(interface* netif) : _netif(netif), _proto(netif, eth_protocol_num::arp, [this] { return get_packet(); })
-    , _rx_packets(_proto.receive([this] (packet p, ethernet_address ea) {
-        return process_packet(std::move(p), ea);
+    , _rx_packets(_proto.receive([this] (packet p, eth_hdr eh) {
+        return process_packet(std::move(p), std::move(eh));
     },
     [this](forward_hash& out_hash_data, packet& p, size_t off) {
         return forward(out_hash_data, p, off);
@@ -68,7 +68,7 @@ void arp::del(uint16_t proto_num) {
 }
 
 future<>
-arp::process_packet(packet p, ethernet_address from) {
+arp::process_packet(packet p, eth_hdr eh) {
     auto ah = ntoh(*p.get_header<arp_hdr>());
     auto i = _arp_for_protocol.find(ah.ptype);
     if (i != _arp_for_protocol.end()) {

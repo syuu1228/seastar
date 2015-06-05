@@ -51,7 +51,7 @@ public:
 class arp {
     interface* _netif;
     l3_protocol _proto;
-    subscription<packet, ethernet_address> _rx_packets;
+    subscription<packet, eth_hdr> _rx_packets;
     std::unordered_map<uint16_t, arp_for_protocol*> _arp_for_protocol;
     circular_buffer<l3_protocol::l3packet> _packetq;
 private:
@@ -68,7 +68,7 @@ public:
     void del(uint16_t proto_num);
 private:
     ethernet_address l2self() { return _netif->hw_address(); }
-    future<> process_packet(packet p, ethernet_address from);
+    future<> process_packet(packet p, eth_hdr eh);
     bool forward(forward_hash& out_hash_data, packet& p, size_t off);
     std::experimental::optional<l3_protocol::l3packet> get_packet();
     template <class l3_proto>

@@ -254,8 +254,8 @@ l3_protocol::l3_protocol(interface* netif, eth_protocol_num proto_num, packet_pr
         _netif->register_packet_provider(std::move(func));
 }
 
-subscription<packet, ethernet_address> l3_protocol::receive(
-        std::function<future<> (packet p, ethernet_address from)> rx_fn,
+subscription<packet, eth_hdr> l3_protocol::receive(
+        std::function<future<> (packet p, eth_hdr eh)> rx_fn,
         std::function<bool (forward_hash&, packet&, size_t)> forward) {
     return _netif->register_l3(_proto_num, std::move(rx_fn), std::move(forward));
 };
@@ -286,9 +286,9 @@ interface::interface(std::shared_ptr<device> dev)
         });
 }
 
-subscription<packet, ethernet_address>
+subscription<packet, eth_hdr>
 interface::register_l3(eth_protocol_num proto_num,
-        std::function<future<> (packet p, ethernet_address from)> next,
+        std::function<future<> (packet p, eth_hdr eh)> next,
         std::function<bool (forward_hash&, packet& p, size_t)> forward) {
     auto i = _proto_map.emplace(std::piecewise_construct, std::make_tuple(uint16_t(proto_num)), std::forward_as_tuple(std::move(forward)));
     assert(i.second);
@@ -336,12 +336,11 @@ future<> interface::dispatch_packet(packet p) {
                 forward(fw, std::move(p));
             } else {
                 auto h = ntoh(*eh);
-                auto from = h.src_mac;
                 p.trim_front(sizeof(*eh));
                 // avoid chaining, since queue lenth is unlimited
                 // drop instead.
                 if (l3.ready.available()) {
-                    l3.ready = l3.packet_stream.produce(std::move(p), from);
+                    l3.ready = l3.packet_stream.produce(std::move(p), std::move(h));
                 }
             }
         }
