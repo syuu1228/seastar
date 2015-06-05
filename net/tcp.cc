@@ -136,8 +136,8 @@ ipv4_tcp::ipv4_tcp(ipv4& inet)
 ipv4_tcp::~ipv4_tcp() {
 }
 
-void ipv4_tcp::received(packet p, ipv4_address from, ipv4_address to) {
-    _tcp->received(std::move(p), from, to);
+void ipv4_tcp::received(packet p, eth_hdr eh, ip_hdr iph) {
+    _tcp->received(std::move(p), std::move(eh), std::move(iph));
 }
 
 bool ipv4_tcp::forward(forward_hash& out_hash_data, packet& p, size_t off) {

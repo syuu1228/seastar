@@ -181,7 +181,7 @@ ipv4::handle_received_packet(packet p, eth_hdr eh) {
 
             // No need to forward if the dst cpu is the current cpu
             if (cpu_id == engine().cpu_id()) {
-                l4->received(std::move(ip_data), h.src_ip, h.dst_ip);
+                l4->received(std::move(ip_data), std::move(eh), std::move(h));
             } else {
                 auto to = _netif->hw_address();
                 auto pkt = frag.get_assembled_packet(eh.src_mac, to);
@@ -204,7 +204,7 @@ ipv4::handle_received_packet(packet p, eth_hdr eh) {
     if (l4) {
         // Trim IP header and pass to upper layer
         p.trim_front(ip_hdr_len);
-        l4->received(std::move(p), h.src_ip, h.dst_ip);
+        l4->received(std::move(p), std::move(eh), std::move(h));
     }
     return make_ready_future<>();
 }
@@ -442,7 +442,7 @@ packet ipv4::frag::get_assembled_packet(ethernet_address from, ethernet_address 
     return pkt;
 }
 
-void icmp::received(packet p, ipaddr from, ipaddr to) {
+void icmp::received(packet p, eth_hdr eh, ip_hdr iph) {
     auto hdr = p.get_header<icmp_hdr>(0);
     if (!hdr || hdr->type != icmp_hdr::msg_type::echo_request) {
         return;
@@ -455,8 +455,8 @@ void icmp::received(packet p, ipaddr from, ipaddr to) {
     hdr->csum = csum.get();
 
     if (_queue_space.try_wait(p.len())) { // drop packets that do not fit the queue
-        _inet.get_l2_dst_address(from).then([this, from, p = std::move(p)] (ethernet_address e_dst) mutable {
-            _packetq.emplace_back(ipv4_traits::l4packet{from, std::move(p), e_dst, ip_protocol_num::icmp});
+        _inet.get_l2_dst_address(iph.src_ip).then([this, iph = std::move(iph), p = std::move(p)] (ethernet_address e_dst) mutable {
+            _packetq.emplace_back(ipv4_traits::l4packet{iph.src_ip, std::move(p), e_dst, ip_protocol_num::icmp});
         });
     }
 }
