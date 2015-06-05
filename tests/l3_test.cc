@@ -26,7 +26,7 @@
 using namespace net;
 
 void dump_arp_packets(l3_protocol& proto) {
-    proto.receive([&proto] (packet p, ethernet_address from) {
+    proto.receive([&proto] (packet p, eth_hdr eh) {
         std::cout << "seen arp packet\n";
         return make_ready_future<>();
     }, [] (forward_hash& out_hash_data, packet& p, size_t off) {return false;});

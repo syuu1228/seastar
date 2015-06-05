@@ -96,8 +96,8 @@ private:
     eth_protocol_num _proto_num;
 public:
     explicit l3_protocol(interface* netif, eth_protocol_num proto_num, packet_provider_type func);
-    subscription<packet, ethernet_address> receive(
-            std::function<future<> (packet, ethernet_address)> rx_fn,
+    subscription<packet, eth_hdr> receive(
+            std::function<future<> (packet, eth_hdr)> rx_fn,
             std::function<bool (forward_hash&, packet&, size_t)> forward);
 private:
     friend class interface;
@@ -105,7 +105,7 @@ private:
 
 class interface {
     struct l3_rx_stream {
-        stream<packet, ethernet_address> packet_stream;
+        stream<packet, eth_hdr> packet_stream;
         future<> ready;
         std::function<bool (forward_hash&, packet&, size_t)> forward;
         l3_rx_stream(std::function<bool (forward_hash&, packet&, size_t)>&& fw) : ready(packet_stream.started()), forward(fw) {}
@@ -122,8 +122,8 @@ public:
     explicit interface(std::shared_ptr<device> dev);
     ethernet_address hw_address() { return _hw_address; }
     const net::hw_features& hw_features() const { return _hw_features; }
-    subscription<packet, ethernet_address> register_l3(eth_protocol_num proto_num,
-            std::function<future<> (packet p, ethernet_address from)> next,
+    subscription<packet, eth_hdr> register_l3(eth_protocol_num proto_num,
+            std::function<future<> (packet p, eth_hdr eh)> next,
             std::function<bool (forward_hash&, packet&, size_t)> forward);
     void forward(unsigned cpuid, packet p);
     unsigned hash2cpu(uint32_t hash);

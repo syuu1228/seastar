@@ -49,8 +49,8 @@ ipv4::ipv4(interface* netif)
     , _gw_address(0)
     , _netmask(0)
     , _l3(netif, eth_protocol_num::ipv4, [this] { return get_packet(); })
-    , _rx_packets(_l3.receive([this] (packet p, ethernet_address ea) {
-        return handle_received_packet(std::move(p), ea); },
+    , _rx_packets(_l3.receive([this] (packet p, eth_hdr eh) {
+        return handle_received_packet(std::move(p), std::move(eh)); },
       [this] (forward_hash& out_hash_data, packet& p, size_t off) {
         return forward(out_hash_data, p, off);}))
     , _tcp(*this)
@@ -97,7 +97,7 @@ bool ipv4::needs_frag(packet& p, ip_protocol_num prot_num, net::hw_features hw_f
 }
 
 future<>
-ipv4::handle_received_packet(packet p, ethernet_address from) {
+ipv4::handle_received_packet(packet p, eth_hdr eh) {
     auto iph = p.get_header<ip_hdr>(0);
     if (!iph) {
         return make_ready_future<>();
