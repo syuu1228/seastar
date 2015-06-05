@@ -136,7 +136,7 @@ ipv4::handle_received_packet(packet p, eth_hdr eh) {
 
     if (_packet_filter) {
         bool handled = false;
-        auto r = _packet_filter->handle(p, &h, eh.src_mac, handled);
+        auto r = _packet_filter->handle(p, eh, h, handled);
         if (handled) {
             return std::move(r);
         }
