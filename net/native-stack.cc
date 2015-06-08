@@ -30,7 +30,7 @@
 #include "dpdk.hh"
 #include "xenfront.hh"
 #include "proxy.hh"
-#include "dhcp.hh"
+#include "dhcp-client.hh"
 #include <memory>
 #include <queue>
 #ifdef HAVE_OSV
@@ -232,7 +232,7 @@ native_network_stack::connect(socket_address sa, socket_address local) {
 using namespace std::chrono_literals;
 
 future<> native_network_stack::run_dhcp(bool is_renew, const dhcp::lease& res) {
-    lw_shared_ptr<dhcp> d = make_lw_shared<dhcp>(_inet);
+    lw_shared_ptr<dhcp_client> d = make_lw_shared<dhcp_client>(_inet);
 
     // Hijack the ip-stack.
     for (unsigned i = 0; i < smp::count; i++) {
@@ -242,7 +242,7 @@ future<> native_network_stack::run_dhcp(bool is_renew, const dhcp::lease& res) {
         });
     }
 
-    net::dhcp::result_type fut = is_renew ? d->renew(res) : d->discover();
+    net::dhcp_client::result_type fut = is_renew ? d->renew(res) : d->discover();
 
     return fut.then([this, d, is_renew](bool success, const dhcp::lease & res) {
         for (unsigned i = 0; i < smp::count; i++) {

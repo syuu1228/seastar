@@ -195,7 +195,7 @@ libnet = [
     'net/ip_checksum.cc',
     'net/udp.cc',
     'net/tcp.cc',
-    'net/dhcp.cc',
+    'net/dhcp-client.cc',
     'net/nat-adapter.cc',
     ]
 

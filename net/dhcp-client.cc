@@ -24,13 +24,14 @@
 #include <array>
 #include <random>
 
-#include "dhcp.hh"
+#include "dhcp-client.hh"
 #include "ip.hh"
 #include "udp.hh"
 
 using namespace std::literals::chrono_literals;
+using namespace net::dhcp;
 
-class net::dhcp::impl : public ip_packet_filter {
+class net::dhcp_client::impl : public ip_packet_filter {
 public:
 
     decltype(std::cout) & log() {
@@ -431,37 +432,37 @@ private:
     uint32_t _xid = 0;
 };
 
-const net::dhcp::impl::req_opt_type net::dhcp::impl::requested_options = { {
+const net::dhcp_client::impl::req_opt_type net::dhcp_client::impl::requested_options = { {
         opt_type::SUBNET_MASK, opt_type::ROUTER, opt_type::DOMAIN_NAME_SERVERS,
         opt_type::INTERFACE_MTU, opt_type::BROADCAST_ADDRESS } };
 
-const net::dhcp::impl::magic_tag net::dhcp::impl::options_magic = { { 0x63, 0x82, 0x53,
+const net::dhcp_client::impl::magic_tag net::dhcp_client::impl::options_magic = { { 0x63, 0x82, 0x53,
         0x63 } };
 
-const uint16_t net::dhcp::impl::client_port;
-const uint16_t net::dhcp::impl::server_port;
+const uint16_t net::dhcp_client::impl::client_port;
+const uint16_t net::dhcp_client::impl::server_port;
 
-const clock_type::duration net::dhcp::default_timeout = std::chrono::duration_cast<clock_type::duration>(std::chrono::seconds(30));
+const clock_type::duration net::dhcp_client::default_timeout = std::chrono::duration_cast<clock_type::duration>(std::chrono::seconds(30));
 
-net::dhcp::dhcp(ipv4 & ip)
+net::dhcp_client::dhcp_client(ipv4 & ip)
 : _impl(std::make_unique<impl>(ip))
 {}
 
-net::dhcp::dhcp(dhcp && v)
+net::dhcp_client::dhcp_client(dhcp_client && v)
 : _impl(std::move(v._impl))
 {}
 
-net::dhcp::~dhcp()
+net::dhcp_client::~dhcp_client()
 {}
 
-net::dhcp::result_type net::dhcp::discover(const clock_type::duration & timeout) {
+net::dhcp_client::result_type net::dhcp_client::discover(const clock_type::duration & timeout) {
     return _impl->run(lease(), timeout);
 }
 
-net::dhcp::result_type net::dhcp::renew(const lease & l, const clock_type::duration & timeout) {
+net::dhcp_client::result_type net::dhcp_client::renew(const lease & l, const clock_type::duration & timeout) {
     return _impl->run(l, timeout);
 }
 
-net::ip_packet_filter* net::dhcp::get_ipv4_filter() {
+net::ip_packet_filter* net::dhcp_client::get_ipv4_filter() {
     return _impl.get();
 }
