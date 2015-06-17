@@ -197,6 +197,7 @@ libnet = [
     'net/tcp.cc',
     'net/dhcp-client.cc',
     'net/nat-adapter.cc',
+    'net/dhcp-proxy.cc',
     ]
 
 core = [
