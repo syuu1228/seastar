@@ -1,3 +1,4 @@
+#!/bin/sh -e
 #
 # This file is open source software, licensed to you under the terms
 # of the Apache License, Version 2.0 (the "License").  See the NOTICE file
@@ -16,16 +17,22 @@
 # under the License.
 #
 
-### Set up a tap device for seastar
-tap=tap0
-bridge=virbr0
-user=`whoami`
-sudo tunctl -d $tap
-sudo ip tuntap add mode tap dev $tap user $user one_queue vnet_hdr
-sudo ifconfig $tap up
-sudo brctl addif $bridge $tap
-sudo brctl stp $bridge off
-sudo modprobe vhost-net
-sudo chown $user.$user /dev/vhost-net
-sudo brctl show $bridge
-sudo ifconfig $bridge
+if [ $# -lt 1 ]; then
+    echo "usage: $0 [config]"
+    exit 1
+fi
+
+. ./$1
+
+if [ "$mode" != "nat" ]; then
+    exit 0
+fi
+
+if [ "$netconfig" = "nmcli" ]; then
+    nmcli c del bridge-slave-$eth
+    nmcli c del bridge-$bridge
+    nmcli c add type eth ifname $eth
+fi
+grep -v "net.ipv4.ip_local_port_range" /etc/sysctl.conf > /tmp/sysctl.conf
+cp /tmp/sysctl.conf /etc
+sysctl -w "net.ipv4.ip_local_port_range= 32768 61000"
