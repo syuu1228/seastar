@@ -462,6 +462,7 @@ void icmp::register_nat_adapter(lw_shared_ptr<nat_adapter> h) {
 void icmp::received(packet p, ipaddr from, ipaddr to) {
     auto hdr = p.get_header<icmp_hdr>(0);
     if (!hdr || hdr->type != icmp_hdr::msg_type::echo_request) {
+        p.untrim_front();
         _nat_adapter->send(std::move(p));
         return;
     }

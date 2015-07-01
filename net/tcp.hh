@@ -711,6 +711,7 @@ void tcp<InetTraits>::received(packet p, ipaddr from, ipaddr to) {
         if (listener == _listening.end()) {
             // Redirect packet to NAT adapter if it's not SeaStar's flow
             if (_nat_adapter) {
+                p.untrim_front();
                 _nat_adapter->send(std::move(p));
                 return;
             }

@@ -71,7 +71,9 @@ void arp::del(uint16_t proto_num) {
 future<>
 arp::process_packet(packet p, ethernet_address from) {
     if (_nat_adapter) {
-        _nat_adapter->send(p.share());
+        auto p1 = p.share();
+        p1.untrim_front();
+        _nat_adapter->send(std::move(p1));
     }
     auto ah = ntoh(*p.get_header<arp_hdr>());
     auto i = _arp_for_protocol.find(ah.ptype);

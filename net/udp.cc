@@ -151,7 +151,9 @@ void ipv4_udp::received(packet p, ipv4_address from, ipv4_address to)
         chan->_queue.push(std::move(dgram));
     } else {
         if (_nat_adapter) {
-            _nat_adapter->send(std::move(dgram.get_data()));
+            auto p1 = dgram.get_data().share();
+            p1.untrim_front();
+            _nat_adapter->send(std::move(p1));
         }
     }
 }
