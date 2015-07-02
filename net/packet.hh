@@ -95,6 +95,7 @@ class packet final {
         deleter _deleter;
         unsigned _len = 0;
         uint16_t _nr_frags = 0;
+        uint16_t _nr_trimmed_back = 0;
         uint16_t _allocated_frags;
         offload_info _offload_info;
         std::experimental::optional<uint32_t> _rss_hash;
@@ -256,6 +257,7 @@ public:
 
     unsigned nr_frags_internal() const { return (_impl->_frags + _impl->_nr_frags) - _impl->_frags_internal; }
     unsigned nr_trimmed_front() const { return _impl->_frags - _impl->_frags_internal; }
+    unsigned nr_trimmed_back() const { return _impl->_nr_trimmed_back; }
 
     // share packet data (reference counted, non COW)
     packet share();
@@ -266,6 +268,7 @@ public:
     void trim_front(size_t how_much);
     void untrim_front();
     void trim_back(size_t how_much);
+    void untrim_back();
 
     // get a header pointer, linearizing if necessary
     template <typename Header>
@@ -588,7 +591,7 @@ void packet::trim_front(size_t how_much) {
             _impl->_frags[0].size -= how_much;
         // insert one fragment on _frags[0],  move how_much bytes from _frags[1] to _frags[0] then trim it
         } else {
-            std::copy(_impl->_frags, _impl->_frags + _impl->_nr_frags, _impl->_frags + 1);
+            std::copy(_impl->_frags, _impl->_frags + nr_frags() + nr_trimmed_back(), _impl->_frags + 1);
             _impl->_frags[0] = { _impl->_frags[1].base, how_much };
             _impl->_frags[1].base += how_much;
             _impl->_frags[1].size -= how_much;
@@ -614,13 +617,29 @@ void packet::trim_back(size_t how_much) {
     while (how_much && how_much >= _impl->_frags[i].size) {
         how_much -= _impl->_frags[i--].size;
     }
+    _impl->_nr_trimmed_back += _impl->_nr_frags - (i + 1);
     _impl->_nr_frags = i + 1;
     if (how_much) {
         _impl->_frags[i].size -= how_much;
         if (i == 0 && _impl->using_internal_data()) {
             _impl->_headroom += how_much;
         }
+        if (_impl->_frags[i].base + _impl->_frags[i].size == _impl->_frags[i + 1].base) {
+            _impl->_frags[i + 1].base -= how_much;
+            _impl->_frags[i + 1].size += how_much;
+        } else {
+            std::copy(_impl->_frags + (i + 1), _impl->_frags + _impl->_nr_frags + _impl->_nr_trimmed_back, _impl->_frags + (i + 2));
+            _impl->_frags[i + 1].base = _impl->_frags[i].base + _impl->_frags[i].size;
+            _impl->_frags[i + 1].size = how_much;
+            ++_impl->_nr_trimmed_back;
+        }
     }
+}
+
+inline
+void packet::untrim_back() {
+    _impl->_nr_frags += _impl->_nr_trimmed_back;
+    _impl->_nr_trimmed_back = 0;
 }
 
 template <typename Header>
@@ -655,24 +674,20 @@ packet packet::share() {
 }
 
 inline
-packet packet::share(size_t offset, size_t len) {
+packet packet::share(size_t offset, size_t l) {
     _impl->unuse_internal_data(); // FIXME: eliminate?
     packet n;
     n._impl = impl::allocate_if_needed(std::move(n._impl), _impl->_nr_frags);
     n._impl->_frags += nr_trimmed_front();
+    n._impl->_nr_frags = nr_frags();
+    n._impl->_nr_trimmed_back = nr_trimmed_back();
+    n._impl->_len = len();
     std::copy(_impl->_frags_internal, _impl->_frags_internal + _impl->_allocated_frags, n._impl->_frags_internal);
+    if (offset > 0)
+        n.trim_front(offset);
+    if (l < n.len())
+        n.trim_back(l);
 
-    size_t idx = 0;
-    while (offset > 0 && offset >= _impl->_frags[idx].size) {
-        offset -= _impl->_frags[idx++].size;
-    }
-    while (n._impl->_len < len) {
-        auto& f = _impl->_frags[idx++];
-        auto fsize = std::min(len - n._impl->_len, f.size - offset);
-        n._impl->_frags[n._impl->_nr_frags++] = { f.base + offset, fsize };
-        n._impl->_len += fsize;
-        offset = 0;
-    }
     n._impl->_offload_info = _impl->_offload_info;
     assert(!n._impl->_deleter);
     n._impl->_deleter = _impl->_deleter.share();
