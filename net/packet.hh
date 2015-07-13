@@ -78,6 +78,7 @@ class packet final {
     // enough for lots of headers, not quite two cache lines:
     static constexpr size_t internal_data_size = 128 - 16;
     static constexpr size_t default_nr_frags = 4;
+    static constexpr size_t reserved_frags = 2;
 
     struct pseudo_vector {
         fragment* _start;
@@ -89,6 +90,29 @@ class packet final {
         fragment& operator[](size_t idx) { return _start[idx]; }
     };
 
+// Fragments on packet
+//
+// To keep trimmed fragments instead of overwriting, we keep trimmed fragment on head and tail.
+// We have _frags to point current head of active fragments, and _nr_frags to indicate tail of active fragments.
+// Since trim_front() often called, we reserve one fragment on top of _frag_internal, use it trimmed fragment.
+//
+// Here is pictures of how _frag_internal[] will used:
+//
+//   initially: _nr_frags = 1, _nr_trimmed_back = 0
+//     [0x1000000, 0], [0x1000000, 1512], [uninitialized]
+//                     ^_frags
+//
+//   after trim_front(12): _nr_frags = 1, _nr_trimmed_back = 0
+//     [0x1000000, 12], [0x100000c, 1500], [uninitialized]
+//                     ^_frags
+//   after untrim_front(): _nr_frags = 2, _nr_trimmed_back = 0
+//     [0x1000000, 12], [0x100000c, 1500], [uninitialized]
+//     ^_frags
+//
+//   after trim_back(1): _nr_frags = 2, _nr_trimmed_back = 1
+//     [0x1000000, 12], [0x100000c, 1499], [0x10005e7, 1]
+//     ^_frags
+//
     struct impl {
         fragment *_frags = _frags_internal + 1;
         // when destroyed, virtual destructor will reclaim resources
@@ -119,7 +143,7 @@ class packet final {
         }
 
         static std::unique_ptr<impl> copy(impl* old, size_t nr) {
-            auto n = allocate(old->_allocated_frags - 1);
+            auto n = allocate(old->_allocated_frags - reserved_frags);
             n->_deleter = std::move(old->_deleter);
             n->_len = old->_len;
             n->_nr_frags = old->_nr_frags;
@@ -156,10 +180,15 @@ class packet final {
             return ::operator delete(ptr);
         }
 
+        // Check _frags[0] by default
         bool using_internal_data() const {
+            return using_internal_data(nr_trimmed_front());
+        }
+
+        bool using_internal_data(int i) const {
             return _nr_frags
-                    && _frags[0].base >= _data
-                    && _frags[0].base < _data + internal_data_size;
+                    && _frags_internal[i].base >= _data
+                    && _frags_internal[i].base < _data + internal_data_size;
         }
 
         void unuse_internal_data() {
@@ -178,8 +207,7 @@ class packet final {
         void copy_internal_fragment_to(impl* to) {
             auto addr = to->_data + _headroom;
             for (auto i = 0; _frags_internal + i < _frags + _nr_frags; i++) {
-                if (_frags_internal[i].base < _data ||
-                    _frags_internal[i].base > _data + internal_data_size)
+                if (!using_internal_data(i))
                     break;
                 to->_frags_internal[i].base = addr;
                 std::copy(_frags_internal[i].base, _frags_internal[i].base + _frags_internal[i].size,
@@ -323,13 +351,13 @@ packet::packet(packet&& x) noexcept
 
 inline
 packet::impl::impl(size_t nr_frags)
-    : _len(0), _allocated_frags(nr_frags + 1) {
+    : _len(0), _allocated_frags(nr_frags + reserved_frags) {
     _frags_internal[0] = {nullptr, 0};
 }
 
 inline
 packet::impl::impl(fragment frag, size_t nr_frags)
-    : _len(frag.size), _allocated_frags(nr_frags + 1) {
+    : _len(frag.size), _allocated_frags(nr_frags + reserved_frags) {
     assert(_allocated_frags > _nr_frags);
     if (frag.size <= internal_data_size) {
         _headroom -= frag.size;
