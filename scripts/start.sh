@@ -26,14 +26,16 @@ fi
 
 if [ "$mode" = "nat" ]; then
     if [ "$netconfig" = "seastar" ]; then
-        killall dhclient
-        eth_mac=`ip link show $eth |grep link|awk '{print $2}'`
-        eth_ip=`ip addr show $eth |grep 'inet '|awk '{print $2}'`
-        ip addr del $eth_ip dev $eth
-        ip link add name $bridge type bridge
-        ip link set $bridge address $eth_mac
-        ip link set dev $eth master $bridge
-        dhclient $bridge
+        if [ "`ip link show $bridge`" = "" ]; then
+            killall dhclient || true
+            eth_mac=`ip link show $eth |grep link|awk '{print $2}'`
+            eth_ip=`ip addr show $eth |grep 'inet '|awk '{print $2}'`
+            ip addr del $eth_ip dev $eth
+            ip link add name $bridge type bridge
+            ip link set $bridge address $eth_mac
+            ip link set dev $eth master $bridge
+            dhclient $bridge
+        fi
     fi
 fi
 

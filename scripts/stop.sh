@@ -34,9 +34,11 @@ fi
 
 if [ "$mode" = "dpdk" ] || [ "$mode" = "nat" ]; then
     pci_id=`$dpdk_src/tools/dpdk_nic_bind.py --status|grep "igb_uio"|awk '{print $1}'`
-    $dpdk_src/tools/dpdk_nic_bind.py -u $pci_id
-    $dpdk_src/tools/dpdk_nic_bind.py -b $eth_driver $pci_id
-    rmmod igb_uio
+    if [ "$pci_id" != "" ]; then
+        $dpdk_src/tools/dpdk_nic_bind.py -u $pci_id
+        $dpdk_src/tools/dpdk_nic_bind.py -b $eth_driver $pci_id
+        rmmod igb_uio
+    fi
     umount /mnt/huge
     if [ "$netconfig" = "seastar" ]; then
         brctl addif $bridge $eth
