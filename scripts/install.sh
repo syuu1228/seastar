@@ -29,11 +29,6 @@ if [ "$mode" != "nat" ]; then
 fi
 
 if [ "$netconfig" = "nmcli" ]; then
-    if [ "`./get_conn_name.py $bridge`" != "" ]; then
-        echo "Bridge already exists"
-        exit 1
-    fi
-    
     eth_conn_name=`./get_conn_name.py $eth`
     if [ "$eth_conn_name" = "" ]; then
         echo "Cannot detect $eth connection name"
