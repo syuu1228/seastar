@@ -36,7 +36,9 @@ namespace net {
 struct fragment {
     char* base;
     size_t size;
-    bool can_merge_with_next = false;
+    bool can_merge_with_next;
+
+    fragment(char *b, size_t s, bool m = false) : base(b), size(s), can_merge_with_next(m) {}
 };
 
 struct offload_info {
