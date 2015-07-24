@@ -213,6 +213,10 @@ native_network_stack::native_network_stack(boost::program_options::variables_map
             _nat_adapter = std::move(h);
             _nat_adapter->set_hw_address(_netif.hw_address());
             _inet.register_nat_adapter(_nat_adapter);
+            _netif.register_l3_unhandled([this] (packet p, ethernet_address from) mutable {
+                _nat_adapter->send(std::move(p));
+                return make_ready_future();
+            });
         });
     }
 }
