@@ -85,24 +85,6 @@ void nat_adapter_interface::send(packet p) {
     _txq.push_back(std::move(p));
 }
 
-void nat_adapter_interface::send(packet p, eth_hdr eh) {
-    auto eh1 = p.prepend_header<eth_hdr>();
-    *eh1 = hton(eh);
-    send(std::move(p));
-}
-
-void nat_adapter_interface::send(packet p, eth_hdr eh, ip_hdr iph) {
-    auto iph1 = p.prepend_header<ip_hdr>();
-    *iph1 = hton(iph);
-    send(std::move(p), std::move(eh));
-}
-
-void nat_adapter_interface::send(packet p, eth_hdr eh, ip_hdr iph, udp_hdr uh) {
-    auto uh1 = p.prepend_header<udp_hdr>();
-    *uh1 = hton(uh);
-    send(std::move(p), std::move(eh), std::move(iph));
-}
-
 thread_local promise<lw_shared_ptr<nat_adapter>> nat_adapter::ready_promise;
 
 future<lw_shared_ptr<nat_adapter>> nat_adapter::create(boost::program_options::variables_map opts, std::shared_ptr<device> seastar_dev) {
@@ -152,21 +134,6 @@ void nat_adapter::set_hw_address(ethernet_address addr)
 void nat_adapter::send(packet p)
 {
     _netif.send(std::move(p));
-}
-
-void nat_adapter::send(packet p, eth_hdr eh)
-{
-    _netif.send(std::move(p), std::move(eh));
-}
-
-void nat_adapter::send(packet p, eth_hdr eh, ip_hdr iph)
-{
-    _netif.send(std::move(p), std::move(eh), std::move(iph));
-}
-
-void nat_adapter::send(packet p, eth_hdr eh, ip_hdr iph, udp_hdr uh)
-{
-    _netif.send(std::move(p), std::move(eh), std::move(iph), std::move(uh));
 }
 
 }

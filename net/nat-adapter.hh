@@ -49,9 +49,6 @@ private:
 public:
     explicit nat_adapter_interface(std::shared_ptr<device> nat_adapter_dev, std::shared_ptr<device> seastar_dev);
     void send(packet p);
-    void send(packet p, eth_hdr eh);
-    void send(packet p, eth_hdr eh, ip_hdr iph);
-    void send(packet p, eth_hdr eh, ip_hdr iph, udp_hdr uh);
 };
 
 class nat_adapter {
@@ -66,9 +63,6 @@ public:
     explicit nat_adapter(boost::program_options::variables_map opts, std::shared_ptr<device> nat_adapter_dev, std::shared_ptr<device> seastar_dev);
     void set_hw_address(ethernet_address addr);
     void send(packet p);
-    void send(packet p, eth_hdr eh);
-    void send(packet p, eth_hdr eh, ip_hdr iph);
-    void send(packet p, eth_hdr eh, ip_hdr iph, udp_hdr uh);
 };
 
 }
