@@ -138,7 +138,8 @@ class packet final {
 
         pseudo_vector fragments() { return { _frags, _nr_frags }; }
         unsigned nr_trimmed_front() const { return _frags - _frags_internal; }
-        bool has_reserved_front() const { return (nr_trimmed_front() == 1 && _frags_internal[0].size == 0); }
+        bool reserved_front_usable() const { return (nr_trimmed_front() == 1 && _frags_internal[0].size == 0); }
+        bool reserved_front_unused() const { return _frags_internal[0].size == 0; }
 
         static std::unique_ptr<impl> allocate(size_t nr_frags) {
             nr_frags = std::max(nr_frags, default_nr_frags);
@@ -289,18 +290,8 @@ public:
     unsigned nr_frags_internal() const { return (_impl->_frags + _impl->_nr_frags) - _impl->_frags_internal; }
     unsigned nr_trimmed_front() const { return _impl->nr_trimmed_front(); }
     unsigned nr_trimmed_back() const { return _impl->_nr_trimmed_back; }
-    bool has_reserved_front() const { return _impl->has_reserved_front(); }
-    bool frag_contiguous(unsigned i) const {
-        if (i < 0 && _impl->_frags + i < _impl->_frags_internal)
-            return false;
-        if (i + 1 > nr_frags())
-            return false;
-        return (_impl->_frags[i].base + _impl->_frags[i].size ==
-                _impl->_frags[i+1].base);
-    }
-    void update_merge_flag(unsigned i) {
-        _impl->_frags[i].can_merge_with_next = frag_contiguous(i);
-    }
+    bool reserved_front_usable() const { return _impl->reserved_front_usable(); }
+    bool reserved_front_unused() const { return _impl->reserved_front_unused(); }
 
     // share packet data (reference counted, non COW)
     packet share();
@@ -422,9 +413,8 @@ packet::packet(std::vector<fragment> frag, deleter d)
     std::copy(frag.begin(), frag.end(), _impl->_frags);
     _impl->_nr_frags = frag.size();
     _impl->_len = 0;
-    for (auto i = 0u; i < nr_frags(); i++) {
-        _impl->_len += _impl->_frags[i].size;
-        update_merge_flag(i);
+    for (auto&& f : _impl->fragments()) {
+        _impl->_len += f.size;
     }
 }
 
@@ -437,45 +427,39 @@ packet::packet(std::vector<fragment> frag, Deleter d)
 template <typename Iterator, typename Deleter>
 inline
 packet::packet(Iterator begin, Iterator end, Deleter del) {
-    unsigned nr_frags = 0;
+    unsigned nr_frags = 0, len = 0;
     nr_frags = std::distance(begin, end);
+    std::for_each(begin, end, [&] (fragment& frag) { len += frag.size; });
     _impl = impl::allocate(nr_frags);
     _impl->_deleter = make_deleter(deleter(), std::move(del));
+    _impl->_len = len;
     _impl->_nr_frags = nr_frags;
     std::copy(begin, end, _impl->_frags);
-    for (auto i = 0u; i < _impl->_nr_frags; i++) {
-        _impl->_len += _impl->_frags[i].size;
-        update_merge_flag(i);
-    }
 }
 
 template <typename Iterator>
 inline
 packet::packet(Iterator begin, Iterator end, deleter del) {
-    unsigned nr_frags = 0;
+    unsigned nr_frags = 0, len = 0;
     nr_frags = std::distance(begin, end);
+    std::for_each(begin, end, [&] (fragment& frag) { len += frag.size; });
     _impl = impl::allocate(nr_frags);
     _impl->_deleter = std::move(del);
+    _impl->_len = len;
     _impl->_nr_frags = nr_frags;
     std::copy(begin, end, _impl->_frags);
-    for (auto i = 0u; i < _impl->_nr_frags; i++) {
-        _impl->_len += _impl->_frags[i].size;
-        update_merge_flag(i);
-    }
 }
 
 inline
 packet::packet(packet&& x, fragment frag)
     : _impl(impl::allocate_if_needed(std::move(x._impl), 1)) {
-    auto idx = _impl->_nr_frags++;
     _impl->_len += frag.size;
     std::unique_ptr<char[]> buf(new char[frag.size]);
     std::copy(frag.base, frag.base + frag.size, buf.get());
-    _impl->_frags[idx] = {buf.get(), frag.size};
+    _impl->_frags[_impl->_nr_frags++] = {buf.get(), frag.size};
     _impl->_deleter = make_deleter(std::move(_impl->_deleter), [buf = buf.release()] {
         delete[] buf;
     });
-    update_merge_flag(idx);
 }
 
 inline
@@ -485,7 +469,7 @@ packet::allocate_headroom(size_t size) {
         _impl->_len += size;
         if (!_impl->using_internal_data()) {
             _impl = impl::allocate_if_needed(std::move(_impl), 1);
-            if (has_reserved_front()) {
+            if (reserved_front_usable()) {
                 --_impl->_frags;
 
             } else {
@@ -519,7 +503,7 @@ packet::packet(fragment frag, packet&& x)
         _impl->_len += frag.size;
         std::unique_ptr<char[]> buf(new char[frag.size]);
         std::copy(frag.base, frag.base + frag.size, buf.get());
-        if (has_reserved_front()) {
+        if (reserved_front_usable()) {
             --_impl->_frags;
         } else {
             std::copy_backward(_impl->_frags, _impl->_frags + _impl->_nr_frags,
@@ -529,7 +513,6 @@ packet::packet(fragment frag, packet&& x)
         _impl->_frags[0] = {buf.get(), frag.size};
         _impl->_deleter = make_deleter(std::move(_impl->_deleter),
                 [buf = std::move(buf)] {});
-        update_merge_flag(0);
     }
 }
 
@@ -539,7 +522,7 @@ packet::packet(fragment frag, Deleter d, packet&& x)
     : _impl(impl::allocate_if_needed(std::move(x._impl), 1)) {
     _impl->unuse_internal_data();
     _impl->_len += frag.size;
-    if (has_reserved_front()) {
+    if (reserved_front_usable()) {
         --_impl->_frags;
     } else {
         std::copy_backward(_impl->_frags, _impl->_frags + _impl->_nr_frags,
@@ -547,7 +530,6 @@ packet::packet(fragment frag, Deleter d, packet&& x)
     }
     ++_impl->_nr_frags;
     _impl->_frags[0] = frag;
-    update_merge_flag(0);
 
     _impl->_deleter = make_deleter(std::move(_impl->_deleter), std::move(d));
 }
@@ -556,20 +538,16 @@ template <typename Deleter>
 inline
 packet::packet(packet&& x, fragment frag, Deleter d)
     : _impl(impl::allocate_if_needed(std::move(x._impl), 1)) {
-    auto idx = _impl->_nr_frags++;
     _impl->_len += frag.size;
-    _impl->_frags[idx] = frag;
-    update_merge_flag(idx);
+    _impl->_frags[_impl->_nr_frags++] = frag;
     _impl->_deleter = make_deleter(std::move(_impl->_deleter), std::move(d));
 }
 
 inline
 packet::packet(packet&& x, fragment frag, deleter d)
     : _impl(impl::allocate_if_needed(std::move(x._impl), 1)) {
-    auto idx = _impl->_nr_frags++;
     _impl->_len += frag.size;
-    _impl->_frags[idx] = frag;
-    update_merge_flag(idx);
+    _impl->_frags[_impl->_nr_frags++] = frag;
     d.append(std::move(_impl->_deleter));
     _impl->_deleter = std::move(d);
 }
@@ -634,9 +612,10 @@ void packet::trim_front(size_t how_much) {
     while (how_much && how_much >= _impl->_frags[i].size) {
         how_much -= _impl->_frags[i].size;
         // if _frags[i-1] and _frags[i] is contiguous, merge them
-        if (i > 0 && _impl->_frags[i - 1].can_merge_with_next &&
+        if (nr_trimmed_front() && _impl->_frags[i - 1].can_merge_with_next &&
             _impl->_frags[i - 1].size) {
             _impl->_frags[i - 1].size += _impl->_frags[i].size;
+            _impl->_frags[i - 1].can_merge_with_next = false;
             if (_impl->_nr_frags > i) {
                 std::copy(_impl->_frags + i + 1, _impl->_frags + nr_frags() + nr_trimmed_back(), _impl->_frags + i);
             }
@@ -655,8 +634,18 @@ void packet::trim_front(size_t how_much) {
         if (_impl->using_internal_data()) {
             _impl->_headroom += how_much;
         }
-        // if _frags[-1] and _frags[0] is contiguous, move how_much bytes from _frags[0] to _frags[-1]
-        if (has_reserved_front()) {
+        if (nr_trimmed_front() && _impl->_frags[-1].can_merge_with_next) {
+            _impl->_frags[-1].size += how_much;
+            _impl->_frags[0].base += how_much;
+            _impl->_frags[0].size -= how_much;
+        // if reserved front available, move how_much bytes from _frags[0] to _frags[-1]
+        } else if (reserved_front_usable()) {
+            _impl->_frags[-1] = { _impl->_frags[0].base, how_much, true };
+            _impl->_frags[0].base += how_much;
+            _impl->_frags[0].size -= how_much;
+        // move reserved front to _frags[-1]
+        } else if (reserved_front_unused()) {
+            std::copy(_impl->_frags_internal + 1, _impl->_frags, _impl->_frags_internal);
             _impl->_frags[-1] = { _impl->_frags[0].base, how_much, true };
             _impl->_frags[0].base += how_much;
             _impl->_frags[0].size -= how_much;
@@ -690,11 +679,19 @@ void packet::trim_back(size_t how_much) {
     _impl->_len -= how_much;
     size_t i = _impl->_nr_frags - 1;
     while (how_much && how_much >= _impl->_frags[i].size) {
-        how_much -= _impl->_frags[i--].size;
-
+        how_much -= _impl->_frags[i].size;
+        if (nr_trimmed_back() + _impl->_frags[i].can_merge_with_next) {
+            _impl->_frags[i].size += _impl->_frags[i + 1].size;
+            _impl->_frags[i].can_merge_with_next = false;
+            if (nr_trimmed_back() > 1) {
+                std::copy(_impl->_frags + i + 2, _impl->_frags + nr_frags() + nr_trimmed_back(), _impl->_frags + i + 1);
+            }
+        } else {
+            ++_impl->_nr_trimmed_back;
+        }
+        --_impl->_nr_frags;
+        --i;
     }
-    _impl->_nr_trimmed_back += _impl->_nr_frags - (i + 1);
-    _impl->_nr_frags = i + 1;
     if (how_much) {
         _impl->_frags[i].size -= how_much;
         if (i == 0 && _impl->using_internal_data()) {
@@ -705,10 +702,10 @@ void packet::trim_back(size_t how_much) {
             _impl->_frags[i + 1].base -= how_much;
             _impl->_frags[i + 1].size += how_much;
         } else {
-            assert(_impl->_nr_frags + 1 <= _impl->_allocated_frags);
-            std::copy(_impl->_frags + (i + 1), _impl->_frags + nr_frags() + nr_trimmed_back(), _impl->_frags + (i + 2));
+            std::copy(_impl->_frags + i + 1, _impl->_frags + nr_frags() + nr_trimmed_back(), _impl->_frags + i + 2);
             _impl->_frags[i + 1].base = _impl->_frags[i].base + _impl->_frags[i].size;
             _impl->_frags[i + 1].size = how_much;
+            _impl->_frags[i].can_merge_with_next = true;
             ++_impl->_nr_trimmed_back;
         }
     }
@@ -739,7 +736,7 @@ char* packet::prepend_uninitialized_header(size_t size) {
         _impl->_len += size;
         _impl = impl::allocate_if_needed(std::move(_impl), 1);
         std::unique_ptr<char[]> buf(new char[size]);
-        if (has_reserved_front()) {
+        if (reserved_front_usable()) {
             --_impl->_frags;
         } else {
             std::copy_backward(_impl->_frags, _impl->_frags + _impl->_nr_frags,
@@ -747,7 +744,6 @@ char* packet::prepend_uninitialized_header(size_t size) {
         }
         ++_impl->_nr_frags;
         _impl->_frags[0] = {buf.get(), size};
-        update_merge_flag(0);
         _impl->_deleter = make_deleter(std::move(_impl->_deleter),
                 [buf = std::move(buf)] {});
     }
