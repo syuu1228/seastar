@@ -47,7 +47,7 @@ if [ "$mode" = "dpdk" ] || [ "$mode" = "nat" ]; then
     $dpdk_src/tools/dpdk_nic_bind.py --force --bind=igb_uio $eth
     mkdir -p /mnt/huge
     mount -t hugetlbfs nodev /mnt/huge
-    echo 64 > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
+    echo $nr_hugepages > /sys/devices/system/node/node0/hugepages/hugepages-2048kB/nr_hugepages
     args="$args --dpdk-pmd"
 fi
 
