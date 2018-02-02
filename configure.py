@@ -352,6 +352,8 @@ add_tristate(arg_parser, name = 'exception-scalability-workaround', dest='except
 arg_parser.add_argument('--allocator-page-size', dest='allocator_page_size', type=int, help='override allocator page size')
 arg_parser.add_argument('--protoc-compiler', action = 'store', dest='protoc', default='protoc',
                         help = 'Path to protoc compiler, the default is protoc')
+arg_parser.add_argument('--sed', action = 'store', dest = 'sed', default = 'sed',
+                        help = 'GNU sed path')
 args = arg_parser.parse_args()
 
 libnet = [
@@ -821,7 +823,7 @@ with open(buildfile, 'w') as f:
         rule ragel
             # sed away a bug in ragel 7 that emits some extraneous _nfa* variables
             # (the $$ is collapsed to a single one by ninja)
-            command = ragel -G2 -o $out $in && sed -i -e '1h;2,$$H;$$!d;g' -re 's/static const char _nfa[^;]*;//g' $out
+            command = ragel -G2 -o $out $in && {sed} -i -e '1h;2,$$H;$$!d;g' -re 's/static const char _nfa[^;]*;//g' $out
             description = RAGEL $out
         rule gen
             command = /bin/echo -e $text > $out
