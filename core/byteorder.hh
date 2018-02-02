@@ -22,7 +22,11 @@
 #pragma once
 
 #include <algorithm>
+#ifdef __linux__
 #include <endian.h>
+#elif __APPLE__
+#include <machine/endian.h>
+#endif
 #include "unaligned.hh"
 
 namespace seastar {
