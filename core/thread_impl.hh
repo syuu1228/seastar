@@ -23,7 +23,11 @@
 #pragma once
 #include "preempt.hh"
 #include <setjmp.h>
+#ifdef __linux__
 #include <ucontext.h>
+#elif __APPLE__
+#include <sys/ucontext.h>
+#endif
 #include <chrono>
 #include <experimental/optional>
 
