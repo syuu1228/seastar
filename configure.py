@@ -217,7 +217,7 @@ def configure_fmt(mode, cxx='g++', cc='gcc'):
 modes = {
     'debug': {
         'sanitize': '-fsanitize=address -fsanitize=leak -fsanitize=undefined',
-        'sanitize_libs': '-lasan -lubsan',
+        'sanitize_libs': '-static-libasan -static-libubsan',
         'opt': '-O0 -DDEBUG -DDEBUG_SHARED_PTR -DDEFAULT_ALLOCATOR -DSEASTAR_THREAD_STACK_GUARDS -DNO_EXCEPTION_HACK -DSEASTAR_SHUFFLE_TASK_QUEUE',
         'libs': '',
         'cares_opts': '-DCARES_STATIC=ON -DCARES_SHARED=OFF -DCMAKE_BUILD_TYPE=Debug',
@@ -453,14 +453,14 @@ libs = ' '.join([maybe_static(args.staticboost,
                               '-lboost_program_options -lboost_system -lboost_filesystem'),
                  '-lstdc++ -lm',
                  maybe_static(args.staticboost, '-lboost_thread'),
-                 '-lcryptopp -lrt -lgnutls -lgnutlsxx -llz4 -lprotobuf -ldl -lgcc_s -lunwind ',
+                 '-lcryptopp -lrt -lgnutls -lgnutlsxx -llz4 -lprotobuf -ldl -lgcc_s -lunwind -lnettle -ltasn1 -lidn -llzma -lhogweed -lgmp -lz ',
                  maybe_static(args.staticyamlcpp, '-lyaml-cpp'),
                  ])
 
 boost_unit_test_lib = maybe_static(args.staticboost, '-lboost_unit_test_framework')
 
 
-hwloc_libs = '-lhwloc -lnuma -lpciaccess -lxml2 -lz'
+hwloc_libs = '-lhwloc -lnuma -lpciaccess -lxml2 -lz -licuio -licui18n -licuuc -licudata'
 
 if args.gcc6_concepts:
     defines.append('HAVE_GCC6_CONCEPTS')
@@ -828,6 +828,8 @@ os.makedirs(outdir, exist_ok = True)
 do_sanitize = True
 if args.static:
     do_sanitize = False
+    user_cflags += " -static -Wl,--allow-multiple-definition"
+    user_ldflags += " -static -Wl,--allow-multiple-definition"
 with open(buildfile, 'w') as f:
     dpdk_deps = ''
     if args.dpdk:
